@@ -117,7 +117,6 @@ public class NewsagentUI extends JFrame {
             Object[] row = {p.getId(), p.getName(), String.format("$%.2f", p.getPrice()), stockDisplay};
             tableModel.addRow(row);
         }
-    }
 
     // Launch the application
     public static void main(String[] args) {
