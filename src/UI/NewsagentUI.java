@@ -3,15 +3,12 @@ package UI;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.util.ArrayList;
+import java.util.List;
 
 public class NewsagentUI extends JFrame {
     
-    // The exact same Data Structure from the console version!
-    private ArrayList<Product> inventory = new ArrayList<>();
-    private int nextId = 1;
+    // Connect the UI to the Backend Manager
+    private InventoryManager manager = new InventoryManager();
 
     // GUI Components
     private JTextField nameField, priceField, stockField;
@@ -50,9 +47,10 @@ public class NewsagentUI extends JFrame {
         String[] columns = {"ID", "Name", "Price", "Stock"};
         tableModel = new DefaultTableModel(columns, 0);
         productTable = new JTable(tableModel);
+        productTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         add(new JScrollPane(productTable), BorderLayout.CENTER);
 
-        // 4. Bottom Panel (Placeholders for remaining User Stories)
+        // 4. Bottom Panel (Actions for User Stories 3, 4, 5)
         JPanel actionPanel = new JPanel();
         JButton updateStockBtn = new JButton("Update Stock");
         JButton editBtn = new JButton("Edit Details");
@@ -64,37 +62,23 @@ public class NewsagentUI extends JFrame {
         add(actionPanel, BorderLayout.SOUTH);
 
         // 5. Button Logic (Events)
-        addButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                addProduct();
-            }
-        });
-
-        // Temporary popups for the buttons we haven't coded yet
-        updateStockBtn.addActionListener(e -> JOptionPane.showMessageDialog(this, "Update Stock coming soon!"));
-        editBtn.addActionListener(e -> JOptionPane.showMessageDialog(this, "Edit Details coming soon!"));
-        removeBtn.addActionListener(e -> JOptionPane.showMessageDialog(this, "Remove Product coming soon!"));
+        addButton.addActionListener(e -> handleAddProduct());
+        updateStockBtn.addActionListener(e -> handleUpdateStock());
+        editBtn.addActionListener(e -> handleEditDetails());
+        removeBtn.addActionListener(e -> handleRemoveProduct());
     }
 
-    // Logic for User Story 1
-    private void addProduct() {
+    // --- Action Handlers ---
+
+    private void handleAddProduct() {
         try {
             String name = nameField.getText();
             double price = Double.parseDouble(priceField.getText());
             int stock = Integer.parseInt(stockField.getText());
 
-            // Validation rule from your User Story
-            if (price < 0 || stock < 0) {
-                JOptionPane.showMessageDialog(this, "Error: Price and stock cannot be negative.", "Input Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
+            // Calls the Manager to do the logic
+            manager.addProduct(name, price, stock);
 
-            // Save to Data Structure
-            Product p = new Product(nextId++, name, price, stock);
-            inventory.add(p);
-
-            // Update the UI Table and clear inputs
             refreshTable();
             nameField.setText("");
             priceField.setText("");
@@ -102,18 +86,89 @@ public class NewsagentUI extends JFrame {
 
         } catch (NumberFormatException ex) {
             JOptionPane.showMessageDialog(this, "Please enter valid numbers for price and stock.", "Format Error", JOptionPane.ERROR_MESSAGE);
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Input Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    // Logic for User Story 2
-    private void refreshTable() {
-        tableModel.setRowCount(0); // Clear the old table data
+    private void handleUpdateStock() {
+        int selectedRow = productTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a product from the table first.");
+            return;
+        }
 
-        for (Product p : inventory) {
-            // Rule: Show "Out of Stock" if 0
+        int id = (int) tableModel.getValueAt(selectedRow, 0);
+        Product p = manager.findProductById(id);
+
+        String input = JOptionPane.showInputDialog(this, "Enter amount to add to stock for " + p.getName() + ":");
+        if (input != null && !input.trim().isEmpty()) {
+            try {
+                int amount = Integer.parseInt(input);
+                p.updateStock(amount); // Uses logic from Product Test
+                refreshTable();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Invalid number entered.");
+            }
+        }
+    }
+
+    private void handleEditDetails() {
+        int selectedRow = productTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a product from the table first.");
+            return;
+        }
+
+        int id = (int) tableModel.getValueAt(selectedRow, 0);
+        Product p = manager.findProductById(id);
+
+        // Request new Name and Price
+        String newName = JOptionPane.showInputDialog(this, "Edit Name:", p.getName());
+        if (newName != null && !newName.trim().isEmpty()) {
+            p.setName(newName);
+        }
+
+        String priceInput = JOptionPane.showInputDialog(this, "Edit Price ($):", p.getPrice());
+        if (priceInput != null) {
+            try {
+                double newPrice = Double.parseDouble(priceInput);
+                if (newPrice >= 0) p.setPrice(newPrice);
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Invalid price entered. Price unchanged.");
+            }
+        }
+        refreshTable();
+    }
+
+    private void handleRemoveProduct() {
+        int selectedRow = productTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a product from the table to remove.");
+            return;
+        }
+
+        int id = (int) tableModel.getValueAt(selectedRow, 0);
+        String name = (String) tableModel.getValueAt(selectedRow, 1);
+
+        // Confirms deletion action as per User Story 5
+        int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to permanently remove '" + name + "'?", "Confirm Deletion", JOptionPane.YES_NO_OPTION);
+        
+        if (confirm == JOptionPane.YES_OPTION) {
+            manager.removeProduct(id);
+            refreshTable();
+        }
+    }
+
+    // --- Table UI Logic ---
+
+    private void refreshTable() {
+        tableModel.setRowCount(0); 
+        List<Product> list = manager.getInventory();
+
+        for (Product p : list) {
+            // Displays "Out of Stock" if quantity is zero
             String stockDisplay = (p.getStockQuantity() == 0) ? "Out of Stock" : String.valueOf(p.getStockQuantity());
-            
-            // Format price to 2 decimal places
             Object[] row = {p.getId(), p.getName(), String.format("$%.2f", p.getPrice()), stockDisplay};
             tableModel.addRow(row);
         }
